@@ -1,0 +1,356 @@
+name: Build Shelfie APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Create Android project
+        run: |
+          mkdir -p app/src/main/java/com/shelfie/app
+
+          cat > settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "Shelfie"
+          include(":app")
+          EOF
+
+          cat > build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.7.3' apply false
+          }
+          EOF
+
+          cat > app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.shelfie.app'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.shelfie.app'
+                  minSdk 24
+                  targetSdk 35
+                  versionCode 1
+                  versionName '0.1.0'
+              }
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:allowBackup="true"
+                  android:label="拾期 SHELFIE"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/java/com/shelfie/app/MainActivity.java <<'EOF'
+          package com.shelfie.app;
+
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.os.Bundle;
+          import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
+          import android.view.View;
+          import android.widget.*;
+          import org.json.JSONArray;
+          import org.json.JSONObject;
+          import java.util.ArrayList;
+
+          public class MainActivity extends Activity {
+
+              private ArrayList<String> items = new ArrayList<>();
+              private LinearLayout list;
+              private int bg = Color.rgb(250, 246, 248);
+              private int ink = Color.rgb(75, 59, 72);
+              private int rose = Color.rgb(218, 157, 180);
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  getWindow().setStatusBarColor(bg);
+                  getWindow().setNavigationBarColor(bg);
+                  getWindow().getDecorView().setSystemUiVisibility(
+                      View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                  );
+
+                  load();
+                  render();
+              }
+
+              private GradientDrawable box(int color, int radius, int stroke) {
+                  GradientDrawable d = new GradientDrawable();
+                  d.setColor(color);
+                  d.setCornerRadius(radius);
+
+                  if (stroke != 0) {
+                      d.setStroke(1, stroke);
+                  }
+
+                  return d;
+              }
+
+              private TextView label(String value, int size, int color, boolean bold) {
+                  TextView t = new TextView(this);
+                  t.setText(value);
+                  t.setTextSize(size);
+                  t.setTextColor(color);
+
+                  if (bold) {
+                      t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  }
+
+                  return t;
+              }
+
+              private void render() {
+                  LinearLayout root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  root.setPadding(24, 28, 24, 16);
+                  root.setBackgroundColor(bg);
+
+                  TextView title = label("拾期 SHELFIE", 28, ink, true);
+                  root.addView(title);
+
+                  TextView subtitle = label(
+                      "好好记录，让生活有迹可循。", 14,
+                      Color.rgb(151, 130, 145), false
+                  );
+
+                  LinearLayout.LayoutParams p =
+                      new LinearLayout.LayoutParams(-1, -2);
+                  p.topMargin = 8;
+                  root.addView(subtitle, p);
+
+                  TextView count = label(
+                      "我的物品  ·  " + items.size(), 18, ink, true
+                  );
+
+                  p = new LinearLayout.LayoutParams(-1, -2);
+                  p.topMargin = 28;
+                  root.addView(count, p);
+
+                  Button add = new Button(this);
+                  add.setText("+  添加物品");
+                  add.setTextColor(Color.WHITE);
+                  add.setBackground(box(rose, 50, 0));
+
+                  p = new LinearLayout.LayoutParams(-1, 56);
+                  p.topMargin = 16;
+                  root.addView(add, p);
+
+                  add.setOnClickListener(v -> addItem());
+
+                  ScrollView scroll = new ScrollView(this);
+
+                  list = new LinearLayout(this);
+                  list.setOrientation(LinearLayout.VERTICAL);
+
+                  p = new LinearLayout.LayoutParams(-1, 0, 1);
+                  p.topMargin = 24;
+                  root.addView(scroll, p);
+                  scroll.addView(list);
+
+                  if (items.isEmpty()) {
+                      TextView empty = label(
+                          "♡\\n\\n还没有添加物品\\n\\n点击上方按钮，开启你的拾期清单",
+                          16,
+                          Color.rgb(153, 133, 146),
+                          false
+                      );
+
+                      empty.setGravity(android.view.Gravity.CENTER);
+                      empty.setPadding(20, 50, 20, 50);
+                      empty.setBackground(box(Color.WHITE, 28,
+                          Color.rgb(240, 225, 234)));
+
+                      list.addView(empty);
+
+                  } else {
+                      for (int i = 0; i < items.size(); i++) {
+                          final int index = i;
+
+                          TextView card = label(
+                              "♡   " + items.get(i) +
+                              "\\n\\n轻触查看删除选项",
+                              16, ink, false
+                          );
+
+                          card.setPadding(22, 22, 22, 22);
+                          card.setBackground(box(Color.WHITE, 24,
+                              Color.rgb(240, 225, 234)));
+
+                          LinearLayout.LayoutParams cp =
+                              new LinearLayout.LayoutParams(-1, -2);
+
+                          cp.bottomMargin = 12;
+                          list.addView(card, cp);
+
+                          card.setOnClickListener(v ->
+                              new AlertDialog.Builder(this)
+                                  .setTitle("删除这件物品？")
+                                  .setMessage(items.get(index))
+                                  .setNegativeButton("取消", null)
+                                  .setPositiveButton("删除", (d, w) -> {
+                                      items.remove(index);
+                                      save();
+                                      render();
+                                  })
+                                  .show()
+                          );
+                      }
+                  }
+
+                  setContentView(root);
+              }
+
+              private void addItem() {
+                  EditText name = new EditText(this);
+                  name.setHint("物品名称，例如：面霜");
+
+                  EditText date = new EditText(this);
+                  date.setHint("到期日期，例如：2027-06-30");
+                  date.setInputType( android.text.InputType.TYPE_CLASS_TEXT );
+
+                  LinearLayout form = new LinearLayout(this);
+                  form.setOrientation(LinearLayout.VERTICAL);
+                  form.setPadding(24, 8, 24, 0);
+                  form.addView(name);
+                  form.addView(date);
+
+                  new AlertDialog.Builder(this)
+                      .setTitle("添加物品")
+                      .setView(form)
+                      .setNegativeButton("取消", null)
+                      .setPositiveButton("保存", (dialog, which) -> {
+
+                          String n = name.getText().toString().trim();
+                          String d = date.getText().toString().trim();
+
+                          if (n.isEmpty()) {
+                              Toast.makeText(
+                                  this,
+                                  "物品名称不能为空",
+                                  Toast.LENGTH_SHORT
+                              ).show();
+                              return;
+                          }
+
+                          String value = n;
+
+                          if (!d.isEmpty()) {
+                              value += "  ·  到期日期：" + d;
+                          }
+
+                          items.add(value);
+                          save();
+                          render();
+                      })
+                      .show();
+              }
+
+              private void save() {
+                  JSONArray array = new JSONArray();
+
+                  for (String item : items) {
+                      array.put(item);
+                  }
+
+                  getSharedPreferences("shelfie_data", MODE_PRIVATE)
+                      .edit()
+                      .putString("items", array.toString())
+                      .apply();
+              }
+
+              private void load() {
+                  String raw = getSharedPreferences(
+                      "shelfie_data", MODE_PRIVATE
+                  ).getString("items", "[]");
+
+                  try {
+                      JSONArray array = new JSONArray(raw);
+
+                      for (int i = 0; i < array.length(); i++) {
+                          items.add(array.getString(i));
+                      }
+
+                  } catch (Exception e) {
+                      items.clear();
+                  }
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Verify APK exists
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: shelfie-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
