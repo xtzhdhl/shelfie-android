@@ -1,5 +1,5 @@
 
-name: Build Shelfie APK
+name: Build SHELFIE Full UI APK
 
 on:
   workflow_dispatch:
@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -23,320 +23,34 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: true
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
-      - name: Create Android project
+      - name: Extract full SHELFIE project
         run: |
-          mkdir -p app/src/main/java/com/shelfie/app
-          mkdir -p app/src/main/res/values
+          test -f shiqi_android_install_project_v03.zip
+          unzip -q shiqi_android_install_project_v03.zip -d extracted
+          test -f extracted/shiqi_android_starter/android/app/src/main/assets/www/index.html
 
-          cat > settings.gradle <<'GRADLE'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
+      - name: Build real Android application
+        working-directory: extracted/shiqi_android_starter/android
+        run: gradle --no-daemon assembleDebug
 
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.name = "Shelfie"
-          include(":app")
-          GRADLE
-
-          cat > build.gradle <<'GRADLE'
-          plugins {
-              id 'com.android.application' version '8.7.3' apply false
-          }
-          GRADLE
-
-          cat > app/build.gradle <<'GRADLE'
-          plugins {
-              id 'com.android.application'
-          }
-
-          android {
-              namespace 'com.shelfie.app'
-              compileSdk 35
-
-              defaultConfig {
-                  applicationId 'com.shelfie.app'
-                  minSdk 24
-                  targetSdk 35
-                  versionCode 1
-                  versionName '1.0'
-              }
-          }
-          GRADLE
-
-          cat > app/src/main/AndroidManifest.xml <<'XML'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application
-                  android:theme="@style/AppTheme"
-                  android:label="拾期 SHELFIE"
-                  android:allowBackup="true"
-                  android:supportsRtl="true">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          XML
-
-          cat > app/src/main/res/values/styles.xml <<'XML'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
-                  <item name="android:fontFamily">sans</item>
-                  <item name="android:colorAccent">#D98FA6</item>
-                  <item name="android:statusBarColor">#FFF8FA</item>
-                  <item name="android:navigationBarColor">#FFF8FA</item>
-                  <item name="android:windowLightStatusBar">true</item>
-                  <item name="android:windowBackground">#FFF8FA</item>
-              </style>
-          </resources>
-          XML
-
-          cat > app/src/main/java/com/shelfie/app/MainActivity.java <<'JAVA'
-          package com.shelfie.app;
-
-          import android.app.*;
-          import android.os.Bundle;
-          import android.graphics.Color;
-          import android.graphics.Typeface;
-          import android.graphics.drawable.GradientDrawable;
-          import android.view.Gravity;
-          import android.view.View;
-          import android.widget.*;
-          import org.json.JSONArray;
-          import org.json.JSONObject;
-          import java.util.Calendar;
-
-          public class MainActivity extends Activity {
-              int bg = Color.rgb(255,248,250);
-              int pink = Color.rgb(217,143,166);
-              int text = Color.rgb(75,65,72);
-              LinearLayout root, list;
-              TextView summary;
-              JSONArray items = new JSONArray();
-              android.content.SharedPreferences prefs;
-
-              @Override
-              public void onCreate(Bundle b) {
-                  super.onCreate(b);
-                  getWindow().setStatusBarColor(bg);
-                  getWindow().setNavigationBarColor(bg);
-                  getWindow().getDecorView().setSystemUiVisibility(
-                      View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-                  prefs = getSharedPreferences("shelfie", MODE_PRIVATE);
-                  try { items = new JSONArray(prefs.getString("items", "[]")); }
-                  catch(Exception e) { items = new JSONArray(); }
-                  render();
-              }
-
-              GradientDrawable shape(int color, int radius) {
-                  GradientDrawable d = new GradientDrawable();
-                  d.setColor(color);
-                  d.setCornerRadius(radius);
-                  return d;
-              }
-
-              TextView label(String s, int size, int color) {
-                  TextView t = new TextView(this);
-                  t.setText(s);
-                  t.setTextSize(size);
-                  t.setTextColor(color);
-                  return t;
-              }
-
-              void render() {
-                  root = new LinearLayout(this);
-                  root.setOrientation(LinearLayout.VERTICAL);
-                  root.setPadding(24, 22, 24, 12);
-                  root.setBackgroundColor(bg);
-
-                  ScrollView scroll = new ScrollView(this);
-                  LinearLayout content = new LinearLayout(this);
-                  content.setOrientation(LinearLayout.VERTICAL);
-
-                  TextView brand = label("S H E L F I E   ✿", 14, pink);
-                  content.addView(brand);
-
-                  TextView title = label("拾期", 34, text);
-                  title.setTypeface(null, Typeface.BOLD);
-                  title.setPadding(0, 10, 0, 4);
-                  content.addView(title);
-
-                  content.addView(label("好好生活，也记得每一份新鲜。", 14,
-                      Color.rgb(145,130,140)));
-
-                  TextView banner = label("  ✧  你的物品保质期管家", 17, text);
-                  banner.setPadding(18, 20, 18, 20);
-                  banner.setBackground(shape(Color.WHITE, 28));
-                  LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
-                      -1, -2);
-                  bp.topMargin = 24;
-                  content.addView(banner, bp);
-
-                  summary = label("", 16, text);
-                  summary.setPadding(4, 22, 4, 12);
-                  content.addView(summary);
-
-                  TextView section = label("我的物品", 22, text);
-                  section.setTypeface(null, Typeface.BOLD);
-                  content.addView(section);
-
-                  list = new LinearLayout(this);
-                  list.setOrientation(LinearLayout.VERTICAL);
-                  content.addView(list);
-
-                  scroll.addView(content);
-                  root.addView(scroll, new LinearLayout.LayoutParams(0, 0, 1));
-
-                  Button add = new Button(this);
-                  add.setText("＋  添加物品");
-                  add.setTextColor(Color.WHITE);
-                  add.setTextSize(16);
-                  add.setBackground(shape(pink, 28));
-                  root.addView(add, new LinearLayout.LayoutParams(-1, 58));
-                  add.setOnClickListener(v -> addItem());
-
-                  setContentView(root);
-                  refreshList();
-              }
-
-              void refreshList() {
-                  list.removeAllViews();
-                  int count = items.length();
-                  summary.setText("目前收纳了 " + count + " 件物品");
-
-                  if(count == 0) {
-                      TextView empty = label(
-                          "还没有添加物品\\n\\n点击下方按钮，开始记录吧 ♡",
-                          15, Color.rgb(155,140,150));
-                      empty.setGravity(Gravity.CENTER);
-                      empty.setPadding(12, 45, 12, 45);
-                      list.addView(empty);
-                      return;
-                  }
-
-                  for(int i = items.length()-1; i >= 0; i--) {
-                      final int index = i;
-                      JSONObject obj = items.optJSONObject(i);
-                      if(obj == null) continue;
-                      String name = obj.optString("name", "未命名物品");
-                      String date = obj.optString("date", "未设置日期");
-
-                      LinearLayout card = new LinearLayout(this);
-                      card.setOrientation(LinearLayout.VERTICAL);
-                      card.setPadding(18, 16, 18, 14);
-                      card.setBackground(shape(Color.WHITE, 22));
-
-                      TextView n = label("♡  " + name, 18, text);
-                      n.setTypeface(null, Typeface.BOLD);
-                      card.addView(n);
-
-                      TextView d = label("到期日期  " + date, 14,
-                          Color.rgb(140,120,135));
-                      d.setPadding(0, 8, 0, 8);
-                      card.addView(d);
-
-                      TextView del = label("删除这件物品", 13, pink);
-                      card.addView(del);
-                      del.setOnClickListener(v -> {
-                          items.remove(index);
-                          save();
-                          refreshList();
-                      });
-
-                      LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
-                          -1, -2);
-                      cp.bottomMargin = 12;
-                      list.addView(card, cp);
-                  }
-              }
-
-              void addItem() {
-                  EditText input = new EditText(this);
-                  input.setHint("物品名称，例如：牛奶、面霜");
-                  input.setSingleLine(true);
-
-                  final Calendar cal = Calendar.getInstance();
-                  Button dateButton = new Button(this);
-                  dateButton.setText("选择到期日期");
-                  final String[] selected = {""};
-
-                  dateButton.setOnClickListener(v -> {
-                      new DatePickerDialog(this, (view, y, m, d) -> {
-                          selected[0] = String.format("%04d-%02d-%02d",
-                              y, m+1, d);
-                          dateButton.setText(selected[0]);
-                      }, cal.get(Calendar.YEAR),
-                         cal.get(Calendar.MONTH),
-                         cal.get(Calendar.DAY_OF_MONTH)).show();
-                  });
-
-                  LinearLayout box = new LinearLayout(this);
-                  box.setOrientation(LinearLayout.VERTICAL);
-                  box.setPadding(20, 4, 20, 4);
-                  box.addView(input);
-                  box.addView(dateButton);
-
-                  new AlertDialog.Builder(this)
-                      .setTitle("添加物品")
-                      .setView(box)
-                      .setNegativeButton("取消", null)
-                      .setPositiveButton("保存", (dialog, which) -> {
-                          String name = input.getText().toString().trim();
-                          if(name.isEmpty()) {
-                              Toast.makeText(this, "请输入物品名称",
-                                  Toast.LENGTH_SHORT).show();
-                              return;
-                          }
-                          JSONObject obj = new JSONObject();
-                          try {
-                              obj.put("name", name);
-                              obj.put("date", selected[0].isEmpty()
-                                  ? "未设置" : selected[0]);
-                              items.put(obj);
-                          } catch(Exception e) {}
-                          save();
-                          refreshList();
-                      }).show();
-              }
-
-              void save() {
-                  prefs.edit().putString("items", items.toString()).apply();
-              }
-          }
-          JAVA
-
-      - name: Build APK
+      - name: Verify APK
         run: |
-          gradle --no-daemon assembleDebug
+          test -f extracted/shiqi_android_starter/android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh extracted/shiqi_android_starter/android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: shelfie-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: shelfie-full-ui-apk
+          path: extracted/shiqi_android_starter/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
