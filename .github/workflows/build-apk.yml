@@ -1,5 +1,5 @@
 
-name: Build and Publish SHELFIE V1.6.0
+name: Build and Publish SHELFIE V1.7.0
 
 on:
   workflow_dispatch:
@@ -14,14 +14,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Extract SHELFIE V1.6.0 source
+      - name: Extract SHELFIE V1.7.0 source
         run: |
           set -euo pipefail
-          test -f shiqi_android_v16_api_nudge_fix.zip
-          unzip -t shiqi_android_v16_api_nudge_fix.zip
+          test -f shiqi_android_v17_chat_reset_nickname_fix.zip
+          unzip -t shiqi_android_v17_chat_reset_nickname_fix.zip
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v16_api_nudge_fix.zip -d source
+          unzip -q shiqi_android_v17_chat_reset_nickname_fix.zip -d source
           test -f source/package.json
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
@@ -32,8 +32,8 @@ jobs:
           set -euo pipefail
           VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
-          test "$VERSION_NAME" = "1.6.0"
-          test "$VERSION_CODE" = "16"
+          test "$VERSION_NAME" = "1.7.0"
+          test "$VERSION_CODE" = "17"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
@@ -157,8 +157,9 @@ jobs:
           body: |
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
-            修复 API 配置提示卡片错误显示的问题。
-            只有缺少配置或真实 API 请求失败时才显示提醒。
+            修复清空对话后 API 状态更新导致消息不显示的问题。
+            清空对话会丢弃旧请求的迟到响应。
+            小助手最新昵称会同步到聊天标题及每次 AI 系统提示。
             沿用固定签名密钥，支持直接覆盖升级。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
           fail_on_unmatched_files: true
