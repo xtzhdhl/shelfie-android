@@ -1,29 +1,39 @@
-name: Build SHELFIE V1.3 APK
+
+name: Build and Publish SHELFIE V1.4
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract SHELFIE V1.3 source
+      - name: Extract SHELFIE V1.4 source archive
         run: |
-          test -f shiqi_android_v13_companion_profiles.zip
-          unzip -t shiqi_android_v13_companion_profiles.zip
+          test -f shiqi_android_v14_persistent_updates.zip
+          unzip -t shiqi_android_v14_persistent_updates.zip
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v13_companion_profiles.zip -d source
+          unzip -q shiqi_android_v14_persistent_updates.zip -d source
           test -f source/package.json
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
           test -f source/android/app/src/main/assets/www/index.html
+
+      - name: Read app version from Gradle
+        run: |
+          VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
+          VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
+          echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -34,7 +44,7 @@ jobs:
         working-directory: source
         run: npm test
 
-      - name: Check JavaScript syntax
+      - name: Check frontend JavaScript syntax
         working-directory: source
         run: |
           node --check www/app.js
@@ -42,6 +52,7 @@ jobs:
           node --check www/product-lookup.js
           node --check www/ai-mutations.js
           node --check www/date-utils.js
+          node --check www/backup-utils.js
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -60,14 +71,53 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
+      - name: Prepare persistent app signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SHELFIE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.SHELFIE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SHELFIE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SHELFIE_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || (echo "Missing SHELFIE_KEYSTORE_BASE64 repository secret" && exit 1)
+          test -n "$KEYSTORE_PASSWORD" || (echo "Missing SHELFIE_KEYSTORE_PASSWORD repository secret" && exit 1)
+          test -n "$KEY_ALIAS" || (echo "Missing SHELFIE_KEY_ALIAS repository secret" && exit 1)
+          test -n "$KEY_PASSWORD" || (echo "Missing SHELFIE_KEY_PASSWORD repository secret" && exit 1)
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/shelfie-upload.jks"
+          test -s "$RUNNER_TEMP/shelfie-upload.jks"
+          echo "SHELFIE_KEYSTORE_PATH=$RUNNER_TEMP/shelfie-upload.jks" >> "$GITHUB_ENV"
+          echo "SHELFIE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "SHELFIE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "SHELFIE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build APK with the persistent signing identity
         working-directory: source/android
         run: gradle --no-daemon --stacktrace assembleDebug
 
-      - name: Upload installable APK
+      - name: Prepare release APK
+        run: |
+          mkdir -p dist
+          cp source/android/app/build/outputs/apk/debug/app-debug.apk "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
+          test -s "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
+
+      - name: Upload installable APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: shelfie-v1.3-debug-apk
-          path: source/android/app/build/outputs/apk/debug/app-debug.apk
+          name: shelfie-v${{ env.SHELFIE_VERSION_NAME }}-debug-apk
+          path: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Publish GitHub Release for in-app updates
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.SHELFIE_VERSION_NAME }}
+          name: SHELFIE V${{ env.SHELFIE_VERSION_NAME }}
+          body: |
+            SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
+
+            拾期 Android 个人版：固定签名、完整加密备份与应用内更新。
+            物品、API 配置、头像、昵称和主题均可加密备份与恢复。
+          files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
+          draft: false
+          prerelease: false
+          make_latest: true
