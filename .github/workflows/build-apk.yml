@@ -36,6 +36,8 @@ jobs:
           test -n "$VERSION_NAME"
           test -n "$VERSION_CODE"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "SHELFIE_VERSION_CODE=$VERSION_CODE"
+
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
 
@@ -77,6 +79,29 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Enable Android BuildConfig generation
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle_file = Path("source/android/app/build.gradle")
+          content = gradle_file.read_text(encoding="utf-8")
+
+          if "buildConfig true" not in content:
+              marker = "android {\n"
+              if marker not in content:
+                  raise SystemExit("Cannot locate android block")
+              content = content.replace(
+                  marker,
+                  marker + "    buildFeatures {\n        buildConfig true\n    }\n\n",
+                  1,
+              )
+              gradle_file.write_text(content, encoding="utf-8")
+
+          print("Android BuildConfig generation is enabled.")
+          PY
+
       - name: Prepare persistent signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.SHELFIE_KEYSTORE_BASE64 }}
@@ -84,15 +109,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "Missing repository secret: SHELFIE_KEYSTORE_BASE64"
+          test -n "${KEYSTORE_BASE64:-}" || {
+            echo "Missing SHELFIE_KEYSTORE_BASE64"
             exit 1
-          fi
+          }
 
-          if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
-            echo "Missing repository secret: SHELFIE_KEYSTORE_PASSWORD"
+          test -n "${KEYSTORE_PASSWORD:-}" || {
+            echo "Missing SHELFIE_KEYSTORE_PASSWORD"
             exit 1
-          fi
+          }
 
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/shelfie-upload.jks"
           test -s "$RUNNER_TEMP/shelfie-upload.jks"
@@ -102,7 +127,7 @@ jobs:
             -storepass "$KEYSTORE_PASSWORD" \
             -alias shelfie-upload >/dev/null
 
-          echo "Persistent signing keystore and alias verified."
+          echo "Persistent signing key verified."
 
       - name: Build signed debug APK
         working-directory: source/android
@@ -137,7 +162,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release for in-app updates
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           token: ${{ github.token }}
@@ -147,7 +172,6 @@ jobs:
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
             拾期 Android 个人版：固定签名、完整加密备份与应用内更新。
-            物品、API 配置、头像、昵称和主题均可加密备份与恢复。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
           fail_on_unmatched_files: true
           draft: false
