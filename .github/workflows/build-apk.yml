@@ -1,5 +1,5 @@
 
-name: Build and Publish SHELFIE V1.5
+name: Build and Publish SHELFIE V1.5.1
 
 on:
   workflow_dispatch:
@@ -10,18 +10,19 @@ permissions:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Extract SHELFIE V1.5 source
+      - name: Extract SHELFIE V1.5.1 source
         run: |
           set -euo pipefail
-          test -f shiqi_android_v15_chat_avatar_polish.zip
-          unzip -t shiqi_android_v15_chat_avatar_polish.zip
+          test -f shiqi_android_v15_1_avatar_clip_fix.zip
+          unzip -t shiqi_android_v15_1_avatar_clip_fix.zip
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v15_chat_avatar_polish.zip -d source
+          unzip -q shiqi_android_v15_1_avatar_clip_fix.zip -d source
           test -f source/package.json
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
@@ -32,11 +33,11 @@ jobs:
           set -euo pipefail
           VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
-          test -n "$VERSION_NAME"
-          test -n "$VERSION_CODE"
+          test "$VERSION_NAME" = "1.5.1"
+          test "$VERSION_CODE" = "14"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
-          echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
+          echo "Building SHELFIE $VERSION_NAME"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -81,18 +82,22 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+
           gradle_file = Path("source/android/app/build.gradle")
           content = gradle_file.read_text(encoding="utf-8")
+
           if "buildConfig true" not in content:
               marker = "android {\n"
               if marker not in content:
                   raise SystemExit("Cannot locate android block")
+
               content = content.replace(
                   marker,
                   marker + "    buildFeatures {\n        buildConfig true\n    }\n\n",
-                  1
+                  1,
               )
               gradle_file.write_text(content, encoding="utf-8")
+
           print("BuildConfig generation enabled.")
           PY
 
@@ -102,10 +107,12 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.SHELFIE_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
+
           test -n "${KEYSTORE_BASE64:-}" || {
             echo "Missing SHELFIE_KEYSTORE_BASE64"
             exit 1
           }
+
           test -n "${KEYSTORE_PASSWORD:-}" || {
             echo "Missing SHELFIE_KEYSTORE_PASSWORD"
             exit 1
@@ -133,30 +140,70 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Verify APK signature and package
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/shelfie-upload.jks
+          KEYSTORE_PASSWORD: ${{ secrets.SHELFIE_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
+
           APK="source/android/app/build/outputs/apk/debug/app-debug.apk"
           SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           test -n "$SDK_DIR"
 
           BUILD_TOOLS="$SDK_DIR/build-tools/35.0.0"
-          test -x "$BUILD_TOOLS/apksigner"
-          test -x "$BUILD_TOOLS/aapt"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
           test -s "$APK"
 
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$APKSIGNER" verify --verbose "$APK"
 
-          "$BUILD_TOOLS/aapt" dump badging "$APK" \
+          "$AAPT" dump badging "$APK" \
             | grep -F "package: name='com.shelfie.expiry.debug'"
 
-          echo "APK signature and package verification passed."
+          EXPECTED_CERT=$(
+            keytool -list -v \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$KEYSTORE_PASSWORD" \
+              -alias shelfie-upload 2>/dev/null \
+              | awk -F'SHA256: ' '/SHA256:/{print $2; exit}' \
+              | sed 's/://g' \
+              | tr -d '[:space:]' \
+              | tr '[:lower:]' '[:upper:]'
+          )
+
+          "$APKSIGNER" verify --print-certs "$APK" \
+            > "$RUNNER_TEMP/apk-cert.txt"
+
+          ACTUAL_CERT=$(
+            sed -n 's/.*Signer #1 certificate SHA-256 digest: //p' \
+              "$RUNNER_TEMP/apk-cert.txt" \
+              | head -n 1 \
+              | sed 's/://g' \
+              | tr -d '[:space:]' \
+              | tr '[:lower:]' '[:upper:]'
+          )
+
+          test -n "$EXPECTED_CERT"
+          test -n "$ACTUAL_CERT"
+
+          if [ "$EXPECTED_CERT" != "$ACTUAL_CERT" ]; then
+            echo "APK signing certificate does not match persistent keystore."
+            exit 1
+          fi
+
+          echo "APK package and signing certificate verified."
 
       - name: Prepare release APK
         run: |
           set -euo pipefail
           mkdir -p dist
+
           cp source/android/app/build/outputs/apk/debug/app-debug.apk \
             "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
+
           test -s "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
 
       - name: Upload installable APK artifact
@@ -176,8 +223,8 @@ jobs:
           body: |
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
-            拾期 Android 个人版：聊天头像形状自定义与图标居中优化。
-            沿用 V1.4 固定签名密钥，支持直接覆盖升级。
+            修复聊天头像图片未按所选形状裁切的问题。
+            沿用固定签名密钥，支持直接覆盖更新。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
           fail_on_unmatched_files: true
           draft: false
