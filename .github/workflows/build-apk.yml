@@ -1,5 +1,5 @@
 
-name: Build SHELFIE Full UI APK
+name: Build SHELFIE V1.2 APK
 
 on:
   workflow_dispatch:
@@ -10,47 +10,61 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Extract SHELFIE V1.2 source
+        run: |
+          test -f shiqi_android_v12_smart_product_lookup.zip
+          unzip -q shiqi_android_v12_smart_product_lookup.zip -d source
+          test -f source/package.json
+          test -f source/android/settings.gradle
+          test -f source/android/app/build.gradle
+          test -f source/android/gradle/wrapper/gradle-wrapper.properties
+          test -f source/android/app/src/main/assets/www/index.html
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run automated tests
+        working-directory: source
+        run: npm test
+
+      - name: Check JavaScript syntax
+        working-directory: source
+        run: |
+          node --check www/app.js
+          node --check www/photo-recognition.js
+          node --check www/product-lookup.js
+
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Setup Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: true
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
-      - name: Extract full SHELFIE project
-        run: |
-          test -f shiqi_android_install_project_v03.zip
-          unzip -q shiqi_android_install_project_v03.zip -d extracted
-          test -f extracted/shiqi_android_starter/android/app/src/main/assets/www/index.html
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
-      - name: Build real Android application
-        working-directory: extracted/shiqi_android_starter/android
-        run: gradle --no-daemon assembleDebug
+      - name: Build debug APK
+        working-directory: source/android
+        run: gradle --no-daemon --stacktrace assembleDebug
 
-      - name: Verify APK
-        run: |
-          test -f extracted/shiqi_android_starter/android/app/build/outputs/apk/debug/app-debug.apk
-          ls -lh extracted/shiqi_android_starter/android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Upload APK
+      - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: shelfie-full-ui-apk
-          path: extracted/shiqi_android_starter/android/app/build/outputs/apk/debug/app-debug.apk
+          name: shelfie-v1.2-debug-apk
+          path: source/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
