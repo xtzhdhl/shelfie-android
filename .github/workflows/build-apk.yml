@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Extract SHELFIE V1.4 source
@@ -33,13 +33,14 @@ jobs:
           set -euo pipefail
           VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
+
           test -n "$VERSION_NAME"
           test -n "$VERSION_CODE"
-          echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
-          echo "SHELFIE_VERSION_CODE=$VERSION_CODE"
 
+          echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
-          echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
+
+          echo "Building SHELFIE $VERSION_NAME, code $VERSION_CODE"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -92,14 +93,15 @@ jobs:
               marker = "android {\n"
               if marker not in content:
                   raise SystemExit("Cannot locate android block")
+
               content = content.replace(
                   marker,
                   marker + "    buildFeatures {\n        buildConfig true\n    }\n\n",
-                  1,
+                  1
               )
               gradle_file.write_text(content, encoding="utf-8")
 
-          print("Android BuildConfig generation is enabled.")
+          print("BuildConfig generation enabled.")
           PY
 
       - name: Prepare persistent signing key
@@ -119,7 +121,9 @@ jobs:
             exit 1
           }
 
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/shelfie-upload.jks"
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode > "$RUNNER_TEMP/shelfie-upload.jks"
+
           test -s "$RUNNER_TEMP/shelfie-upload.jks"
 
           keytool -list \
@@ -141,17 +145,41 @@ jobs:
       - name: Verify APK signature and package
         run: |
           set -euo pipefail
+
           APK="source/android/app/build/outputs/apk/debug/app-debug.apk"
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+
+          test -n "$SDK_DIR" || {
+            echo "Android SDK directory not found"
+            exit 1
+          }
+
+          BUILD_TOOLS="$SDK_DIR/build-tools/35.0.0"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+
+          echo "Android SDK: $SDK_DIR"
+          echo "Build Tools: $BUILD_TOOLS"
+
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
           test -s "$APK"
-          apksigner verify --verbose --print-certs "$APK"
-          aapt dump badging "$APK" | grep -F "package: name='com.shelfie.expiry.debug'"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+          "$AAPT" dump badging "$APK" \
+            | grep -F "package: name='com.shelfie.expiry.debug'"
+
+          echo "APK signature and package verification passed."
 
       - name: Prepare release APK
         run: |
           set -euo pipefail
           mkdir -p dist
+
           cp source/android/app/build/outputs/apk/debug/app-debug.apk \
             "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
+
           test -s "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
 
       - name: Upload installable APK artifact
@@ -171,7 +199,8 @@ jobs:
           body: |
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
-            拾期 Android 个人版：固定签名、完整加密备份与应用内更新。
+            拾期 Android 个人版：
+            固定签名、完整加密备份与应用内更新。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
           fail_on_unmatched_files: true
           draft: false
