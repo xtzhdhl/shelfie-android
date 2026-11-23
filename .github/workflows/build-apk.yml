@@ -19,6 +19,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Verify there is only one active GitHub Actions workflow
+        run: |
+          set -euo pipefail
+          mapfile -t workflows < <(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)
+          if [ "\${#workflows[@]}" -ne 1 ] || [ "\${workflows[0]}" != ".github/workflows/build-apk.yml" ]; then
+            echo "Expected exactly one active workflow: .github/workflows/build-apk.yml"
+            printf '%s\n' "\${workflows[@]}"
+            exit 1
+          fi
+          echo "Verified: build-apk.yml is the only active workflow."
+
+
       - name: Extract SHELFIE V1.9.5 source
         run: |
           set -euo pipefail
@@ -31,6 +43,15 @@ jobs:
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
           test -f source/android/app/src/main/assets/www/index.html
+
+      - name: Remove inactive legacy workflow copies from the source archive
+        run: |
+          set -euo pipefail
+          rm -f source/build-apk.yml source/build-apk-v16.yml source/build-apk-v17.yml source/build-apk-v18.yml source/build-apk-v19.yml
+          test -f source/.github/workflows/build-apk.yml
+          ACTIVE_SOURCE_WORKFLOWS=$(find source/.github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) | wc -l)
+          test "$ACTIVE_SOURCE_WORKFLOWS" -eq 1
+          echo "Removed inactive root-level workflow copies; one packaged workflow remains."
 
       - name: Read and verify app version
         run: |
@@ -66,21 +87,32 @@ jobs:
           cmp -s www/assets/fonts/shelfie-handwriting.woff2 android/app/src/main/assets/www/assets/fonts/shelfie-handwriting.woff2
           echo "Offline handwriting font and OFL license are present in both web and Android assets."
 
-      - name: Fix stale archive-name assertion in packaged CI test
+      - name: Make packaged workflow test version-neutral
         working-directory: source
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+
           test_file = Path("tests/android-bridge-contract.test.mjs")
           source = test_file.read_text(encoding="utf-8")
-          old_name = "shiqi_android_v19_4_smooth_splash_motion.zip"
-          new_name = "shiqi_android_v19_5_bouncy_wordmark.zip"
-          if old_name not in source:
-              raise SystemExit("Expected stale V1.9.4 ZIP assertion was not found; refusing to patch an unexpected test.")
-          source = source.replace(old_name, new_name)
+          replacements = [
+              (
+                  r"assert.match(workflow, /shiqi_android_v19_4_smooth_splash_motion\.zip/);",
+                  r"assert.match(workflow, /shiqi_android_v19_\d+_[a-z0-9_]+\.zip/);",
+              ),
+              (
+                  r"assert.match(workflow, /unzip -q shiqi_android_v19_4_smooth_splash_motion\.zip -d source/);",
+                  r"assert.match(workflow, /unzip -q shiqi_android_v19_\d+_[a-z0-9_]+\.zip -d source/);",
+              ),
+          ]
+          for old, new in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one outdated assertion, found {count}: {old}")
+              source = source.replace(old, new, 1)
           test_file.write_text(source, encoding="utf-8")
-          print("Updated packaged archive-name assertion to V1.9.5.")
+          print("Updated both archived ZIP assertions to version-neutral checks.")
           PY
 
       - name: Run automated tests
