@@ -1,11 +1,11 @@
-name: Build and Publish SHELFIE V1.9.1
+name: Build and Publish SHELFIE V1.9.2
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'shiqi_android_v19_1_brand_refresh.zip'
+      - 'shiqi_android_v19_2_splash_glyph_fix.zip'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -19,14 +19,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Extract SHELFIE V1.9.1 source
+      - name: Extract SHELFIE V1.9.2 source
         run: |
           set -euo pipefail
-          test -f shiqi_android_v19_1_brand_refresh.zip
-          unzip -t shiqi_android_v19_1_brand_refresh.zip
+          test -f shiqi_android_v19_2_splash_glyph_fix.zip
+          unzip -t shiqi_android_v19_2_splash_glyph_fix.zip
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v19_1_brand_refresh.zip -d source
+          unzip -q shiqi_android_v19_2_splash_glyph_fix.zip -d source
           test -f source/package.json
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
@@ -37,8 +37,8 @@ jobs:
           set -euo pipefail
           VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
-          test "$VERSION_NAME" = "1.9.1"
-          test "$VERSION_CODE" = "20"
+          test "$VERSION_NAME" = "1.9.2"
+          test "$VERSION_CODE" = "21"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
@@ -163,9 +163,9 @@ jobs:
           body: |
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
-            V1.9.1 品牌视觉更新：替换拾期应用图标，并更新启动页品牌动效。
-            启动时以手写感动画呈现「拾期」，配合轻柔回弹与淡出过渡；尊重系统减少动态效果设置。
-            保留 V1.9 的本机离线 OCR 截图表格识别与批量导入能力。
+            V1.9.2 启动页修正：启动页移除应用图标，只保留「拾期」字标；修正「期」字为真实简体中文楷体字形轮廓。
+            Android 12 及以上系统启动画面隐藏默认启动图标，桌面启动器图标仍保留。
+            保留 V1.9 的本机离线 OCR 截图表格识别、批量导入和 V1.9.1 品牌图标更新。
             不调用视觉 AI、不上传截图，保留现有 SQLite、API、头像和用户数据。
             沿用固定签名密钥与原应用包名，支持直接覆盖升级。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
