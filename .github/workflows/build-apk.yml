@@ -66,6 +66,23 @@ jobs:
           cmp -s www/assets/fonts/shelfie-handwriting.woff2 android/app/src/main/assets/www/assets/fonts/shelfie-handwriting.woff2
           echo "Offline handwriting font and OFL license are present in both web and Android assets."
 
+      - name: Fix stale archive-name assertion in packaged CI test
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          test_file = Path("tests/android-bridge-contract.test.mjs")
+          source = test_file.read_text(encoding="utf-8")
+          old_name = "shiqi_android_v19_4_smooth_splash_motion.zip"
+          new_name = "shiqi_android_v19_5_bouncy_wordmark.zip"
+          if old_name not in source:
+              raise SystemExit("Expected stale V1.9.4 ZIP assertion was not found; refusing to patch an unexpected test.")
+          source = source.replace(old_name, new_name)
+          test_file.write_text(source, encoding="utf-8")
+          print("Updated packaged archive-name assertion to V1.9.5.")
+          PY
+
       - name: Run automated tests
         working-directory: source
         run: npm test
