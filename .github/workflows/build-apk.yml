@@ -22,12 +22,12 @@ jobs:
       - name: Verify there is only one active GitHub Actions workflow
         run: |
           set -euo pipefail
-          mapfile -t workflows < <(find .github/workflows -type f \\( -name '*.yml' -o -name '*.yaml' \\) | sort)
-          if [[ ${workflows[@]+x} && ${#workflows[@]} -eq 1 && "${workflows[0]}" == ".github/workflows/build-apk.yml" ]]; then
+          workflow_files="$(find .github/workflows -type f \\( -name '*.yml' -o -name '*.yaml' \\) | sort)"
+          if [ "$workflow_files" = ".github/workflows/build-apk.yml" ]; then
             echo "Verified: build-apk.yml is the only active workflow."
           else
             echo "Expected exactly one active workflow: .github/workflows/build-apk.yml"
-            printf '%s\\n' "${workflows[@]:-}"
+            printf '%s\\n' "$workflow_files"
             exit 1
           fi
 
