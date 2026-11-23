@@ -1,7 +1,12 @@
-
-name: Build and Publish SHELFIE V1.8.0
+name: Build and Publish SHELFIE V1.9.0
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'shiqi_android_v19_ocr_table_parser.zip'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
 permissions:
@@ -14,14 +19,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Extract SHELFIE V1.8.0 source
+      - name: Extract SHELFIE V1.9.0 source
         run: |
           set -euo pipefail
-          test -f shiqi_android_v18_local_ocr_batch_import.zip
-          unzip -t shiqi_android_v18_local_ocr_batch_import.zip
+          test -f shiqi_android_v19_ocr_table_parser.zip
+          unzip -t shiqi_android_v19_ocr_table_parser.zip
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v18_local_ocr_batch_import.zip -d source
+          unzip -q shiqi_android_v19_ocr_table_parser.zip -d source
           test -f source/package.json
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
@@ -32,8 +37,8 @@ jobs:
           set -euo pipefail
           VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
-          test "$VERSION_NAME" = "1.8.0"
-          test "$VERSION_CODE" = "18"
+          test "$VERSION_NAME" = "1.9.0"
+          test "$VERSION_CODE" = "19"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
@@ -158,10 +163,11 @@ jobs:
           body: |
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
-            新增本机离线中文/英文 OCR 截图批量导入。
-            OCR 读取图片文字、按文字位置和日期标签配对物品与日期，核对后批量保存。
-            不调用 AI API、不上传截图，保留现有 SQLite、API 和头像数据。
-            沿用固定签名密钥，支持直接覆盖升级。
+            V1.9 优化本机离线 OCR 截图表格识别与批量导入。
+            按表头和列位置识别物品名称、类别、生产日期与到期日期，支持不同截图布局分别解析。
+            对低置信度中文识别进行一次本地增强重试，并保留导入前人工核对。
+            不调用视觉 AI、不上传截图，保留现有 SQLite、API 和头像数据。
+            沿用固定签名密钥与原应用包名，支持直接覆盖升级。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
           fail_on_unmatched_files: true
           draft: false
