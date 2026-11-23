@@ -184,8 +184,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.SHELFIE_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$${KEYSTORE_BASE64:-}" || { echo "Missing SHELFIE_KEYSTORE_BASE64"; exit 1; }
-          test -n "$${KEYSTORE_PASSWORD:-}" || { echo "Missing SHELFIE_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "${KEYSTORE_BASE64:-}" || { echo "Missing SHELFIE_KEYSTORE_BASE64"; exit 1; }
+          test -n "${KEYSTORE_PASSWORD:-}" || { echo "Missing SHELFIE_KEYSTORE_PASSWORD"; exit 1; }
           mkdir -p "$RUNNER_TEMP"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/shelfie-upload.jks"
           test -s "$RUNNER_TEMP/shelfie-upload.jks"
@@ -215,7 +215,7 @@ jobs:
         run: |
           set -euo pipefail
           APK="source/android/app/build/outputs/apk/debug/app-debug.apk"
-          SDK_DIR="$${ANDROID_HOME:-$${ANDROID_SDK_ROOT:-}}"
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           test -n "$SDK_DIR"
           BUILD_TOOLS="$SDK_DIR/build-tools/35.0.0"
           APKSIGNER="$BUILD_TOOLS/apksigner"
@@ -249,8 +249,8 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           cp source/android/app/build/outputs/apk/debug/app-debug.apk \
-            "dist/shelfie-v$${SHELFIE_VERSION_NAME}.apk"
-          test -s "dist/shelfie-v$${SHELFIE_VERSION_NAME}.apk"
+            "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
+          test -s "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
 
       - name: Upload installable APK artifact
         uses: actions/upload-artifact@v6
