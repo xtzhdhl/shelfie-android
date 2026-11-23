@@ -12,57 +12,73 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: shelfie-v1-9-5-build
+  cancel-in-progress: false
+
 jobs:
   build-and-publish:
+    name: Test, build, sign and publish APK
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Verify there is only one active GitHub Actions workflow
+      - name: Verify only the current workflow is active
+        shell: bash
         run: |
           set -euo pipefail
-          workflow_files="$(find .github/workflows -type f | grep -E '[.]ya?ml$' | sort || true)"
-          if [ "$workflow_files" = ".github/workflows/build-apk.yml" ]; then
-            echo "Verified: build-apk.yml is the only active workflow."
-          else
+          mapfile -t workflow_files < <(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)
+          if [[ "${#workflow_files[@]}" -ne 1 || "${workflow_files[0]}" != ".github/workflows/build-apk.yml" ]]; then
             echo "Expected exactly one active workflow: .github/workflows/build-apk.yml"
-            printf '%s\n' "$workflow_files"
+            printf '%s\n' "${workflow_files[@]:-<none>}"
             exit 1
           fi
+          echo "Verified: build-apk.yml is the only active workflow."
 
-      - name: Extract SHELFIE V1.9.5 source
+      - name: Extract and validate V1.9.5 source archive
+        shell: bash
         run: |
           set -euo pipefail
-          test -f shiqi_android_v19_5_bouncy_wordmark.zip
-          unzip -t shiqi_android_v19_5_bouncy_wordmark.zip
+          ARCHIVE="shiqi_android_v19_5_bouncy_wordmark.zip"
+          test -s "$ARCHIVE"
+          unzip -t "$ARCHIVE"
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v19_5_bouncy_wordmark.zip -d source
-          test -f source/package.json
-          test -f source/android/settings.gradle
-          test -f source/android/app/build.gradle
-          test -f source/android/app/src/main/assets/www/index.html
+          unzip -q "$ARCHIVE" -d source
+          test -s source/package.json
+          test -s source/android/settings.gradle
+          test -s source/android/app/build.gradle
+          test -s source/android/app/src/main/assets/www/index.html
+          echo "Source archive extracted and required Android files verified."
 
-      - name: Remove inactive legacy workflow copies from the source archive
+      - name: Remove inactive workflow copies from packaged source
+        shell: bash
         run: |
           set -euo pipefail
-          rm -f source/build-apk.yml source/build-apk-v16.yml source/build-apk-v17.yml source/build-apk-v18.yml source/build-apk-v19.yml
-          test -f source/.github/workflows/build-apk.yml
-          ACTIVE_SOURCE_WORKFLOWS=$(find source/.github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) | wc -l)
-          test "$ACTIVE_SOURCE_WORKFLOWS" -eq 1
-          echo "Removed inactive root-level workflow copies; one packaged workflow remains."
+          find source -maxdepth 1 -type f \( -name 'build-apk*.yml' -o -name 'build-apk*.yaml' \) -delete
+          test -s source/.github/workflows/build-apk.yml
+          mapfile -t packaged_workflows < <(find source/.github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)
+          if [[ "${#packaged_workflows[@]}" -ne 1 || "${packaged_workflows[0]}" != "source/.github/workflows/build-apk.yml" ]]; then
+            echo "Packaged source must contain exactly one workflow."
+            printf '%s\n' "${packaged_workflows[@]:-<none>}"
+            exit 1
+          fi
+          echo "Inactive root-level workflow copies removed; one packaged workflow remains."
 
       - name: Read and verify app version
+        shell: bash
         run: |
           set -euo pipefail
-          VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
-          VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
+          VERSION_NAME="$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)"
+          VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)"
           test "$VERSION_NAME" = "1.9.5"
           test "$VERSION_CODE" = "24"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
-          echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
+          echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)."
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -70,13 +86,14 @@ jobs:
           node-version: '20'
           package-manager-cache: false
 
-      - name: Set up Python for embedded handwriting font
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
-      - name: Prepare and verify embedded Chinese handwriting font
+      - name: Prepare and verify offline handwriting font
         working-directory: source
+        shell: bash
         run: |
           set -euo pipefail
           bash scripts/prepare-handwriting-font.sh
@@ -85,10 +102,11 @@ jobs:
           test -s android/app/src/main/assets/www/assets/fonts/shelfie-handwriting.woff2
           test -s android/app/src/main/assets/www/assets/fonts/OFL-Xiaolai.txt
           cmp -s www/assets/fonts/shelfie-handwriting.woff2 android/app/src/main/assets/www/assets/fonts/shelfie-handwriting.woff2
-          echo "Offline handwriting font and OFL license are present in both web and Android assets."
+          echo "Offline font files and license verified."
 
-      - name: Make packaged workflow test version-neutral
+      - name: Update stale version-specific assertions in archived workflow test
         working-directory: source
+        shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -109,27 +127,38 @@ jobs:
           for old, new in replacements:
               count = source.count(old)
               if count != 1:
-                  raise SystemExit(f"Expected exactly one outdated assertion, found {count}: {old}")
+                  raise SystemExit(
+                      f"Expected exactly one outdated assertion, found {count}: {old}"
+                  )
               source = source.replace(old, new, 1)
           test_file.write_text(source, encoding="utf-8")
-          print("Updated both archived ZIP assertions to version-neutral checks.")
+          print("Updated both stale ZIP-name assertions.")
           PY
 
       - name: Run automated tests
         working-directory: source
-        run: npm test
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
 
       - name: Check JavaScript syntax
         working-directory: source
+        shell: bash
         run: |
           set -euo pipefail
-          node --check www/app.js
-          node --check www/photo-recognition.js
-          node --check www/product-lookup.js
-          node --check www/ai-mutations.js
-          node --check www/date-utils.js
-          node --check www/backup-utils.js
-          node --check www/ocr-import.js
+          for file in \
+            www/app.js \
+            www/photo-recognition.js \
+            www/product-lookup.js \
+            www/ai-mutations.js \
+            www/date-utils.js \
+            www/backup-utils.js \
+            www/ocr-import.js; do
+            test -s "$file"
+            node --check "$file"
+          done
+          echo "JavaScript syntax checks passed."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -148,37 +177,45 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Prepare persistent signing key
+      - name: Restore and verify persistent signing key
+        shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.SHELFIE_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.SHELFIE_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "${KEYSTORE_BASE64:-}" || { echo "Missing SHELFIE_KEYSTORE_BASE64"; exit 1; }
-          test -n "${KEYSTORE_PASSWORD:-}" || { echo "Missing SHELFIE_KEYSTORE_PASSWORD"; exit 1; }
-            printf '%s\n' "$workflow_files"
+          test -n "$${KEYSTORE_BASE64:-}" || { echo "Missing SHELFIE_KEYSTORE_BASE64"; exit 1; }
+          test -n "$${KEYSTORE_PASSWORD:-}" || { echo "Missing SHELFIE_KEYSTORE_PASSWORD"; exit 1; }
+          mkdir -p "$RUNNER_TEMP"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/shelfie-upload.jks"
           test -s "$RUNNER_TEMP/shelfie-upload.jks"
-          keytool -list -keystore "$RUNNER_TEMP/shelfie-upload.jks" \
-            -storepass "$KEYSTORE_PASSWORD" -alias shelfie-upload >/dev/null
-          echo "Persistent signing key verified."
+          keytool -list \
+            -keystore "$RUNNER_TEMP/shelfie-upload.jks" \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -alias shelfie-upload >/dev/null
+          echo "Persistent signing key restored and alias verified."
 
       - name: Build signed debug APK
         working-directory: source/android
+        shell: bash
         env:
           SHELFIE_KEYSTORE_PATH: ${{ runner.temp }}/shelfie-upload.jks
           SHELFIE_KEYSTORE_PASSWORD: ${{ secrets.SHELFIE_KEYSTORE_PASSWORD }}
           SHELFIE_KEY_ALIAS: shelfie-upload
           SHELFIE_KEY_PASSWORD: ${{ secrets.SHELFIE_KEYSTORE_PASSWORD }}
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace assembleDebug
 
-      - name: Verify APK signature and package
+      - name: Verify APK package and persistent signature
+        shell: bash
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/shelfie-upload.jks
           KEYSTORE_PASSWORD: ${{ secrets.SHELFIE_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
           APK="source/android/app/build/outputs/apk/debug/app-debug.apk"
-          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          SDK_DIR="$${ANDROID_HOME:-$${ANDROID_SDK_ROOT:-}}"
           test -n "$SDK_DIR"
           BUILD_TOOLS="$SDK_DIR/build-tools/35.0.0"
           APKSIGNER="$BUILD_TOOLS/apksigner"
@@ -187,30 +224,33 @@ jobs:
           test -x "$AAPT"
           test -s "$APK"
           "$APKSIGNER" verify --verbose "$APK"
-          "$AAPT" dump badging "$APK" | grep -F "package: name='com.shelfie.expiry.debug'"
-          EXPECTED_CERT=$(keytool -list -v -keystore "$KEYSTORE_PATH" \
+          BADGING="$("$AAPT" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | grep -F "package: name='com.shelfie.expiry.debug'"
+          printf '%s\n' "$BADGING" | grep -F "versionCode='24' versionName='1.9.5'"
+          EXPECTED_CERT="$(keytool -list -v -keystore "$KEYSTORE_PATH" \
             -storepass "$KEYSTORE_PASSWORD" -alias shelfie-upload 2>/dev/null \
             | awk -F'SHA256: ' '/SHA256:/{print $2; exit}' | sed 's/://g' \
-            | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+            | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
           "$APKSIGNER" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-cert.txt"
-          ACTUAL_CERT=$(sed -n 's/.*Signer #1 certificate SHA-256 digest: //p' \
+          ACTUAL_CERT="$(sed -n 's/.*Signer #1 certificate SHA-256 digest: //p' \
             "$RUNNER_TEMP/apk-cert.txt" | head -n 1 | sed 's/://g' \
-            | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+            | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
           test -n "$EXPECTED_CERT"
           test -n "$ACTUAL_CERT"
-          if [ "$EXPECTED_CERT" != "$ACTUAL_CERT" ]; then
-            echo "APK signing certificate does not match persistent keystore."
+          if [[ "$EXPECTED_CERT" != "$ACTUAL_CERT" ]]; then
+            echo "APK signing certificate does not match the persistent keystore."
             exit 1
           fi
-          echo "APK package and signing certificate verified."
+          echo "APK package, version, and signing certificate verified."
 
       - name: Prepare release APK
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
           cp source/android/app/build/outputs/apk/debug/app-debug.apk \
-            "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
-          test -s "dist/shelfie-v${SHELFIE_VERSION_NAME}.apk"
+            "dist/shelfie-v$${SHELFIE_VERSION_NAME}.apk"
+          test -s "dist/shelfie-v$${SHELFIE_VERSION_NAME}.apk"
 
       - name: Upload installable APK artifact
         uses: actions/upload-artifact@v6
