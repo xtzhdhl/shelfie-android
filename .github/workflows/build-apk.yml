@@ -1,11 +1,11 @@
-name: Build and Publish SHELFIE V1.9.2
+name: Build and Publish SHELFIE V1.9.3
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'shiqi_android_v19_2_splash_glyph_fix.zip'
+      - 'shiqi_android_v19_3_handwriting_wordmark.zip'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -19,14 +19,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Extract SHELFIE V1.9.2 source
+      - name: Extract SHELFIE V1.9.3 source
         run: |
           set -euo pipefail
-          test -f shiqi_android_v19_2_splash_glyph_fix.zip
-          unzip -t shiqi_android_v19_2_splash_glyph_fix.zip
+          test -f shiqi_android_v19_3_handwriting_wordmark.zip
+          unzip -t shiqi_android_v19_3_handwriting_wordmark.zip
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v19_2_splash_glyph_fix.zip -d source
+          unzip -q shiqi_android_v19_3_handwriting_wordmark.zip -d source
           test -f source/package.json
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
@@ -37,8 +37,8 @@ jobs:
           set -euo pipefail
           VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
-          test "$VERSION_NAME" = "1.9.2"
-          test "$VERSION_CODE" = "21"
+          test "$VERSION_NAME" = "1.9.3"
+          test "$VERSION_CODE" = "22"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
@@ -48,6 +48,23 @@ jobs:
         with:
           node-version: '20'
           package-manager-cache: false
+
+      - name: Set up Python for embedded handwriting font
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Prepare and verify embedded Chinese handwriting font
+        working-directory: source
+        run: |
+          set -euo pipefail
+          bash scripts/prepare-handwriting-font.sh
+          test -s www/assets/fonts/shelfie-handwriting.woff2
+          test -s www/assets/fonts/OFL-Xiaolai.txt
+          test -s android/app/src/main/assets/www/assets/fonts/shelfie-handwriting.woff2
+          test -s android/app/src/main/assets/www/assets/fonts/OFL-Xiaolai.txt
+          cmp -s www/assets/fonts/shelfie-handwriting.woff2 android/app/src/main/assets/www/assets/fonts/shelfie-handwriting.woff2
+          echo "Offline handwriting font and OFL license are present in both web and Android assets."
 
       - name: Run automated tests
         working-directory: source
@@ -163,9 +180,9 @@ jobs:
           body: |
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
-            V1.9.2 启动页修正：启动页移除应用图标，只保留「拾期」字标；修正「期」字为真实简体中文楷体字形轮廓。
-            Android 12 及以上系统启动画面隐藏默认启动图标，桌面启动器图标仍保留。
-            保留 V1.9 的本机离线 OCR 截图表格识别、批量导入和 V1.9.1 品牌图标更新。
+            V1.9.3 启动页手写字标修正：完整显示「拾期」两个汉字，使用离线内嵌的小赖手写字体。
+            中文标语、英文副标题和底部品牌小字统一采用同一手写字体；两个汉字依次轻弹显现。
+            构建时固定版本下载字体并核对 SHA-256，子集化为 WOFF2 后同步至 Android WebView 资源，同时附带 OFL 1.1 许可。
             不调用视觉 AI、不上传截图，保留现有 SQLite、API、头像和用户数据。
             沿用固定签名密钥与原应用包名，支持直接覆盖升级。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
