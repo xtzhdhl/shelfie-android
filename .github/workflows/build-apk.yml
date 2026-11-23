@@ -1,11 +1,11 @@
-name: Build and Publish SHELFIE V1.9.3
+name: Build and Publish SHELFIE V1.9.4
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'shiqi_android_v19_3_handwriting_wordmark.zip'
+      - 'shiqi_android_v19_4_smooth_splash_motion.zip'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -19,14 +19,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Extract SHELFIE V1.9.3 source
+      - name: Extract SHELFIE V1.9.4 source
         run: |
           set -euo pipefail
-          test -f shiqi_android_v19_3_handwriting_wordmark.zip
-          unzip -t shiqi_android_v19_3_handwriting_wordmark.zip
+          test -f shiqi_android_v19_4_smooth_splash_motion.zip
+          unzip -t shiqi_android_v19_4_smooth_splash_motion.zip
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v19_3_handwriting_wordmark.zip -d source
+          unzip -q shiqi_android_v19_4_smooth_splash_motion.zip -d source
           test -f source/package.json
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
@@ -37,8 +37,8 @@ jobs:
           set -euo pipefail
           VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
-          test "$VERSION_NAME" = "1.9.3"
-          test "$VERSION_CODE" = "22"
+          test "$VERSION_NAME" = "1.9.4"
+          test "$VERSION_CODE" = "23"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
@@ -180,10 +180,10 @@ jobs:
           body: |
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
-            V1.9.3 启动页手写字标修正：完整显示「拾期」两个汉字，使用离线内嵌的小赖手写字体。
-            中文标语、英文副标题和底部品牌小字统一采用同一手写字体；两个汉字依次轻弹显现。
-            构建时固定版本下载字体并核对 SHA-256，子集化为 WOFF2 后同步至 Android WebView 资源，同时附带 OFL 1.1 许可。
-            不调用视觉 AI、不上传截图，保留现有 SQLite、API、头像和用户数据。
+            V1.9.4 启动页动效优化：保留 V1.9.3 已确认正确的「拾期」手写字形与小赖字体，只调整动画节奏与运动幅度。
+            标题作为整体连续显现，不再逐字大幅弹跳；中文标语轻柔跟进，英文副标题和底部品牌字样细腻淡入。
+            移除夸张旋转、漂浮装饰与移动加载条，背景装饰保持静止；尊重系统减少动态效果设置。
+            保留离线内嵌字体、OFL 1.1 许可、SQLite、API、头像和用户数据。
             沿用固定签名密钥与原应用包名，支持直接覆盖升级。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
           fail_on_unmatched_files: true
