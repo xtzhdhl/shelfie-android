@@ -1,11 +1,11 @@
-name: Build and Publish SHELFIE V1.9.4
+name: Build and Publish SHELFIE V1.9.5
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'shiqi_android_v19_4_smooth_splash_motion.zip'
+      - 'shiqi_android_v19_5_bouncy_wordmark.zip'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -19,14 +19,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Extract SHELFIE V1.9.4 source
+      - name: Extract SHELFIE V1.9.5 source
         run: |
           set -euo pipefail
-          test -f shiqi_android_v19_4_smooth_splash_motion.zip
-          unzip -t shiqi_android_v19_4_smooth_splash_motion.zip
+          test -f shiqi_android_v19_5_bouncy_wordmark.zip
+          unzip -t shiqi_android_v19_5_bouncy_wordmark.zip
           rm -rf source
           mkdir -p source
-          unzip -q shiqi_android_v19_4_smooth_splash_motion.zip -d source
+          unzip -q shiqi_android_v19_5_bouncy_wordmark.zip -d source
           test -f source/package.json
           test -f source/android/settings.gradle
           test -f source/android/app/build.gradle
@@ -37,8 +37,8 @@ jobs:
           set -euo pipefail
           VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName '\([^']*\)'.*/\1/p" source/android/app/build.gradle | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode \([0-9][0-9]*\).*/\1/p' source/android/app/build.gradle | head -n 1)
-          test "$VERSION_NAME" = "1.9.4"
-          test "$VERSION_CODE" = "23"
+          test "$VERSION_NAME" = "1.9.5"
+          test "$VERSION_CODE" = "24"
           echo "SHELFIE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "SHELFIE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "Building SHELFIE $VERSION_NAME (versionCode $VERSION_CODE)"
@@ -180,10 +180,10 @@ jobs:
           body: |
             SHELFIE_VERSION_CODE=${{ env.SHELFIE_VERSION_CODE }}
 
-            V1.9.4 启动页动效优化：保留 V1.9.3 已确认正确的「拾期」手写字形与小赖字体，只调整动画节奏与运动幅度。
-            标题作为整体连续显现，不再逐字大幅弹跳；中文标语轻柔跟进，英文副标题和底部品牌字样细腻淡入。
-            移除夸张旋转、漂浮装饰与移动加载条，背景装饰保持静止；尊重系统减少动态效果设置。
-            保留离线内嵌字体、OFL 1.1 许可、SQLite、API、头像和用户数据。
+            V1.9.5 启动页弹跳动画调整：保留已确认正确的「拾期」两个汉字、手写字体与字形，仅调整字标动效。
+            「拾」先轻盈蓄力跃起、弹性落地并回弹；「期」稍后跟随，形成错峰、俏皮且自然的双字弹跳节奏。
+            标题本身为主动画，标语与英文副标题仅柔和淡入；支持系统减少动态效果设置。
+            保留离线内嵌字体、OFL 1.1 许可、应用图标、SQLite、API、头像和用户数据。
             沿用固定签名密钥与原应用包名，支持直接覆盖升级。
           files: dist/shelfie-v${{ env.SHELFIE_VERSION_NAME }}.apk
           fail_on_unmatched_files: true
