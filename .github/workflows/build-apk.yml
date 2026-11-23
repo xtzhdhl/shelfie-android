@@ -22,7 +22,7 @@ jobs:
       - name: Verify there is only one active GitHub Actions workflow
         run: |
           set -euo pipefail
-          workflow_files="$(find .github/workflows -type f \\( -name '*.yml' -o -name '*.yaml' \\) | sort)"
+          workflow_files="$(find .github/workflows -type f | grep -E '\\.ya?ml$' | sort || true)"
           if [ "$workflow_files" = ".github/workflows/build-apk.yml" ]; then
             echo "Verified: build-apk.yml is the only active workflow."
           else
