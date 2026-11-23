@@ -22,12 +22,12 @@ jobs:
       - name: Verify there is only one active GitHub Actions workflow
         run: |
           set -euo pipefail
-          workflow_files="$(find .github/workflows -type f | grep -E '\\.ya?ml$' | sort || true)"
+          workflow_files="$(find .github/workflows -type f | grep -E '[.]ya?ml$' | sort || true)"
           if [ "$workflow_files" = ".github/workflows/build-apk.yml" ]; then
             echo "Verified: build-apk.yml is the only active workflow."
           else
             echo "Expected exactly one active workflow: .github/workflows/build-apk.yml"
-            printf '%s\\n' "$workflow_files"
+            printf '%s\n' "$workflow_files"
             exit 1
           fi
 
@@ -156,7 +156,7 @@ jobs:
           set -euo pipefail
           test -n "${KEYSTORE_BASE64:-}" || { echo "Missing SHELFIE_KEYSTORE_BASE64"; exit 1; }
           test -n "${KEYSTORE_PASSWORD:-}" || { echo "Missing SHELFIE_KEYSTORE_PASSWORD"; exit 1; }
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/shelfie-upload.jks"
+            printf '%s\n' "$workflow_files"
           test -s "$RUNNER_TEMP/shelfie-upload.jks"
           keytool -list -keystore "$RUNNER_TEMP/shelfie-upload.jks" \
             -storepass "$KEYSTORE_PASSWORD" -alias shelfie-upload >/dev/null
